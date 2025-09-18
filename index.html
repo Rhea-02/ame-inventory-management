@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AME Lab - Inventory Management</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧪 AME Lab Inventory Management</h1>
+            <p>Track temporary storage items on the shop floor</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="nav-btn active" onclick="showTab('add-item')">📝 Add New Item</button>
+            <button class="nav-btn" onclick="showTab('dashboard')">📊 View All Items</button>
+            <button class="nav-btn" onclick="showTab('archived')">📋 Picked Up Items</button>
+            <button class="nav-btn" onclick="showTab('help')">❓ Help & Guide</button>
+        </nav>
+
+        <!-- Add Item Tab -->
+        <section id="add-item" class="tab-content active">
+            <div class="form-container">
+                <h2>📦 Store a New Item</h2>
+                <p style="text-align: center; color: #64b5f6; margin-bottom: 25px; font-size: 1.1rem;">Fill in all the details below to register your item for temporary storage</p>
+                <form id="inventory-form">
+                    <div class="form-group">
+                        <label for="owner-name">Your Full Name *</label>
+                        <input type="text" id="owner-name" name="ownerName" placeholder="Enter your full name" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">This helps us identify who owns the item</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="email-id">Your Email Address *</label>
+                        <input type="email" id="email-id" name="emailId" placeholder="your.name@company.com" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">We'll use this to contact you if needed</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sso-id">Employee ID (SSO) *</label>
+                        <input type="text" id="sso-id" name="ssoId" placeholder="Your employee login ID" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">Your company login ID for verification</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="object-stored">What are you storing? *</label>
+                        <input type="text" id="object-stored" name="objectStored" placeholder="e.g., Laptop, Tool Kit, Documents" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">Describe the item you want to store</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="unique-id">Item Tag/ID Number *</label>
+                        <input type="text" id="unique-id" name="uniqueId" placeholder="e.g., LAP001, TOOL123" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">A unique code to identify your item (must be different for each item)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="location">Where is it stored? *</label>
+                        <input type="text" id="location" name="location" placeholder="e.g., Shelf A1, Cabinet B2, Locker 5" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">Specify the exact location in the lab</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="time-period">How many days do you need storage? *</label>
+                        <input type="number" id="time-period" name="timePeriod" min="1" placeholder="7" required>
+                        <small style="color: #90caf9; margin-top: 5px; display: block;">You can extend this later if needed</small>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">🚀 Store My Item</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Dashboard Tab -->
+        <section id="dashboard" class="tab-content">
+            <div class="dashboard-header">
+                <h2>📊 Currently Stored Items</h2>
+                <div class="dashboard-actions">
+                    <button class="btn btn-secondary" onclick="exportToExcel()">📄 Download Report</button>
+                    <input type="file" id="excel-import" accept=".xlsx,.xls" style="display: none;" onchange="importFromExcel(event)">
+                    <button class="btn btn-secondary" onclick="document.getElementById('excel-import').click()">📂 Upload Data</button>
+                </div>
+            </div>
+            
+            <div class="stats-container">
+                <div class="stat-card">
+                    <h3 id="total-items">0</h3>
+                    <p>Items Currently Stored</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="expiring-soon">0</h3>
+                    <p>Need Pickup Soon</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="overdue-items">0</h3>
+                    <p>Time Expired</p>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Owner Name</th>
+                            <th>Email</th>
+                            <th>Employee ID</th>
+                            <th>Item Description</th>
+                            <th>Item Tag</th>
+                            <th>Storage Location</th>
+                            <th>Time Left</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-tbody">
+                        <!-- Dynamic content will be inserted here -->
+                    </tbody>
+                </table>
+                <div id="no-items" class="no-items" style="display: none;">
+                    <p>No items are currently being stored. Click on "📝 Add New Item" to get started!</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Archived Items Tab -->
+        <section id="archived" class="tab-content">
+            <div class="dashboard-header">
+                <h2>📋 Items Already Picked Up</h2>
+                <button class="btn btn-secondary" onclick="exportArchivedToExcel()">📄 Download History</button>
+            </div>
+            
+            <div class="table-container">
+                <table id="archived-table">
+                    <thead>
+                        <tr>
+                            <th>Owner Name</th>
+                            <th>Email</th>
+                            <th>Employee ID</th>
+                            <th>Item Description</th>
+                            <th>Item Tag</th>
+                            <th>Storage Location</th>
+                            <th>How Long Stored</th>
+                            <th>Date Picked Up</th>
+                        </tr>
+                    </thead>
+                    <tbody id="archived-tbody">
+                        <!-- Dynamic content will be inserted here -->
+                    </tbody>
+                </table>
+                <div id="no-archived" class="no-items" style="display: none;">
+                    <p>No items have been picked up yet. Items will appear here after they are collected.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Help & Guide Tab -->
+        <section id="help" class="tab-content">
+            <div class="form-container" style="max-width: 800px;">
+                <h2>📚 How to Use the Storage System</h2>
+                
+                <div style="text-align: left; color: #1565c0; line-height: 1.8;">
+                    <h3 style="color: #1976d2; margin: 25px 0 15px 0;">🚀 Getting Started</h3>
+                    <ol style="padding-left: 20px;">
+                        <li><strong>Store an Item:</strong> Click "📝 Add New Item" and fill in all the details</li>
+                        <li><strong>Check Your Items:</strong> Click "📊 View All Items" to see everything you've stored</li>
+                        <li><strong>Add More Time:</strong> Click "⏰ Add More Time" if you need longer storage</li>
+                        <li><strong>Pick Up Item:</strong> Click "✅ I Picked This Up" when you collect your item</li>
+                    </ol>
+
+                    <h3 style="color: #1976d2; margin: 25px 0 15px 0;">💡 Important Tips</h3>
+                    <ul style="padding-left: 20px;">
+                        <li><strong>Item Tag/ID:</strong> Make this unique for each item (like LAP001, TOOL123, etc.)</li>
+                        <li><strong>Location:</strong> Be specific (like "Shelf A1" or "Cabinet B2")</li>
+                        <li><strong>Time Management:</strong> You can always extend time later if needed</li>
+                        <li><strong>Backup:</strong> Download reports regularly to keep a backup</li>
+                    </ul>
+
+                    <h3 style="color: #1976d2; margin: 25px 0 15px 0;">🎨 Understanding Colors</h3>
+                    <div style="display: grid; gap: 15px; margin: 20px 0;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span class="status-indicator status-normal">Normal</span>
+                            <span>More than 2 days left - all good!</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span class="status-indicator status-expiring">Expiring</span>
+                            <span>2 days or less - plan to pick up soon</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span class="status-indicator status-overdue">Time Expired</span>
+                            <span>Time is up - pick up immediately!</span>
+                        </div>
+                    </div>
+
+                    <h3 style="color: #1976d2; margin: 25px 0 15px 0;">📊 Reports & Data</h3>
+                    <ul style="padding-left: 20px;">
+                        <li><strong>Download Report:</strong> Get an Excel file of all current items</li>
+                        <li><strong>Download History:</strong> Get an Excel file of all picked-up items</li>
+                        <li><strong>Upload Data:</strong> Add multiple items at once from an Excel file</li>
+                    </ul>
+
+                    <div style="background: linear-gradient(135deg, #e8f4fd 0%, #f3f9ff 100%); padding: 20px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #2196f3;">
+                        <h4 style="color: #1976d2; margin: 0 0 10px 0;">🆘 Need Help?</h4>
+                        <p style="margin: 0;">If you have questions or problems, contact the lab administrator or IT support team.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Time Extension Modal -->
+    <div id="extend-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⏰ Extend Storage Time</h3>
+                <span class="close" onclick="closeExtendModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Add more time for: <strong id="extend-item-name"></strong></p>
+                <div class="form-group">
+                    <label for="extend-amount">How much more time do you need?</label>
+                    <input type="number" id="extend-amount" min="1" placeholder="7" required>
+                    <select id="extend-unit">
+                        <option value="days">Days</option>
+                        <option value="hours">Hours</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeExtendModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmExtension()">✅ Extend Time</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="pickup-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📦 Confirm Item Pickup</h3>
+                <span class="close" onclick="closePickupModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you have picked up this item?</p>
+                <p><strong id="pickup-item-name"></strong></p>
+                <p class="warning">⚠️ This will remove the item from active storage and move it to the pickup history.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePickupModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmPickup()">✅ Yes, I Picked It Up</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Excel Template</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <h1>Excel Template Generator</h1>
+    <button onclick="createTemplate()">Download Excel Template</button>
+
+    <script>
+        function createTemplate() {
+            // Sample data for the template
+            const templateData = [
+                {
+                    'Owner Name': 'John Doe',
+                    'Email ID': 'john.doe@company.com',
+                    'SSO ID': 'JDOE001',
+                    'Object Stored': 'Sample Equipment',
+                    'Unique ID': 'EQ001',
+                    'Location': 'Shelf A1',
+                    'Time Period (Days)': 7
+                },
+                {
+                    'Owner Name': 'Jane Smith',
+                    'Email ID': 'jane.smith@company.com',
+                    'SSO ID': 'JSMITH002',
+                    'Object Stored': 'Testing Device',
+                    'Unique ID': 'TD002',
+                    'Location': 'Cabinet B2',
+                    'Time Period (Days)': 14
+                }
+            ];
+            
+            // Create workbook and worksheet
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Template');
+            
+            // Save template file
+            XLSX.writeFile(wb, 'AME_Lab_Import_Template.xlsx');
+        }
+    </script>
+</body>
+</html>
