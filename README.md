@@ -1,6 +1,6 @@
-# AME Lab Inventory Management System
+# AMTC Lab Inventory Management System
 
-A comprehensive web-based inventory management tool for tracking temporary storage items in the AME Lab shop floor.
+A comprehensive web-based inventory management tool for tracking temporary storage items in the AMTC Lab shop floor.
 
 ## Features
 
@@ -168,10 +168,10 @@ lab-inventory-management/
 - Barcode scanning support
 
 ## Support
-For issues or questions, contact the AME Lab administration or IT support.
+For issues or questions, contact the AMTC Lab administration or IT support.
 
 ---
 
 **Version**: 1.0  
 **Last Updated**: September 2025  
-**Author**: AME Lab IT Team
+**Author**: AMTC Lab IT Team

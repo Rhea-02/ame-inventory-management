@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Archived Items</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug-info { background: #f0f0f0; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .btn { padding: 8px 16px; margin: 5px; cursor: pointer; border: none; border-radius: 4px; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .action-buttons { display: flex; gap: 8px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug: Archived Items Buttons</h1>
+    
+    <div class="debug-info">
+        <h3>Testing Button Visibility</h3>
+        <p>This page tests if the archived items buttons render correctly.</p>
+    </div>
+
+    <h3>📋 Test Archived Items Table:</h3>
+    <table id="test-table">
+        <thead>
+            <tr>
+                <th>Owner Name</th>
+                <th>Email</th>
+                <th>Employee ID</th>
+                <th>Item Description</th>
+                <th>Item Tag</th>
+                <th>Storage Location</th>
+                <th>How Long Stored</th>
+                <th>Date Picked Up</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="test-tbody">
+            <tr>
+                <td>Test User</td>
+                <td>test@example.com</td>
+                <td>12345</td>
+                <td>Test Item</td>
+                <td>TEST001</td>
+                <td>Shelf A1</td>
+                <td>2 days 5h</td>
+                <td>9/22/2025</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="testRestore('test123')" title="Restore to active inventory">
+                            🔄 Restore
+                        </button>
+                        <button class="btn btn-danger" onclick="testDelete('test123')" title="Permanently delete this record">
+                            🗑️ Delete
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="debug-info">
+        <h3>Test Functions:</h3>
+        <button class="btn btn-primary" onclick="testRestore('debug123')">Test Restore Function</button>
+        <button class="btn btn-danger" onclick="testDelete('debug456')">Test Delete Function</button>
+    </div>
+
+    <div id="console-output"></div>
+
+    <script>
+        function testRestore(itemId) {
+            console.log('Test restore called with ID:', itemId);
+            alert('🔄 Restore function called for item: ' + itemId);
+            logToPage('Restore function called for item: ' + itemId);
+        }
+
+        function testDelete(itemId) {
+            console.log('Test delete called with ID:', itemId);
+            const confirmed = confirm('⚠️ Test Delete Confirmation\n\nThis is just a test. Proceed?');
+            if (confirmed) {
+                alert('🗑️ Delete function called for item: ' + itemId);
+                logToPage('Delete function called for item: ' + itemId);
+            }
+        }
+
+        function logToPage(message) {
+            const output = document.getElementById('console-output');
+            output.innerHTML += '<div class="debug-info">' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+
+        // Test on page load
+        window.onload = function() {
+            logToPage('Page loaded successfully');
+            logToPage('Buttons should be visible in the table above');
+        };
+    </script>
+</body>
+</html>

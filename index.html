@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AME Lab - Inventory Management</title>
+    <title>AMTC Lab - Inventory Management</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🧪 AME Lab Inventory Management</h1>
-            <p>Track temporary storage items on the shop floor</p>
+            <h1>🔬 AMTC Lab Inventory Management</h1>
+            <p>Track storage items in the AMTC store room</p>
         </header>
 
         <nav class="nav-tabs">
@@ -20,6 +20,7 @@
             <button class="nav-btn" onclick="showTab('archived')">📋 Picked Up Items</button>
             <button class="nav-btn" onclick="showTab('help')">❓ Help & Guide</button>
         </nav>
+
 
         <!-- Add Item Tab -->
         <section id="add-item" class="tab-content active">
@@ -98,6 +99,14 @@
                     <h3 id="overdue-items">0</h3>
                     <p>Time Expired</p>
                 </div>
+                <div class="stat-card storage-usage">
+                    <h3 id="storage-usage">0 MB</h3>
+                    <p>Storage Used</p>
+                    <div class="storage-bar">
+                        <div class="storage-fill" id="storage-fill"></div>
+                    </div>
+                    <small id="storage-details">0 items stored</small>
+                </div>
             </div>
 
             <div class="table-container">
@@ -143,6 +152,7 @@
                             <th>Storage Location</th>
                             <th>How Long Stored</th>
                             <th>Date Picked Up</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="archived-tbody">
@@ -155,6 +165,8 @@
             </div>
         </section>
 
+
+
         <!-- Help & Guide Tab -->
         <section id="help" class="tab-content">
             <div class="form-container" style="max-width: 800px;">
@@ -166,7 +178,7 @@
                         <li><strong>Store an Item:</strong> Click "📝 Add New Item" and fill in all the details</li>
                         <li><strong>Check Your Items:</strong> Click "📊 View All Items" to see everything you've stored</li>
                         <li><strong>Add More Time:</strong> Click "⏰ Add More Time" if you need longer storage</li>
-                        <li><strong>Pick Up Item:</strong> Click "✅ I Picked This Up" when you collect your item</li>
+                        <li><strong>Pick Up Item:</strong> Click "✅ Mark as Picked Up" when you collect your item</li>
                     </ol>
 
                     <h3 style="color: #1976d2; margin: 25px 0 15px 0;">💡 Important Tips</h3>
@@ -199,11 +211,6 @@
                         <li><strong>Download History:</strong> Get an Excel file of all picked-up items</li>
                         <li><strong>Upload Data:</strong> Add multiple items at once from an Excel file</li>
                     </ul>
-
-                    <div style="background: linear-gradient(135deg, #e8f4fd 0%, #f3f9ff 100%); padding: 20px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #2196f3;">
-                        <h4 style="color: #1976d2; margin: 0 0 10px 0;">🆘 Need Help?</h4>
-                        <p style="margin: 0;">If you have questions or problems, contact the lab administrator or IT support team.</p>
-                    </div>
                 </div>
             </div>
         </section>
@@ -219,12 +226,9 @@
             <div class="modal-body">
                 <p>Add more time for: <strong id="extend-item-name"></strong></p>
                 <div class="form-group">
-                    <label for="extend-amount">How much more time do you need?</label>
-                    <input type="number" id="extend-amount" min="1" placeholder="7" required>
-                    <select id="extend-unit">
-                        <option value="days">Days</option>
-                        <option value="hours">Hours</option>
-                    </select>
+                    <label for="extend-amount">How many additional days do you need?</label>
+                    <input type="number" id="extend-amount" min="1" max="365" placeholder="7" required style="width: 100px; display: inline-block; margin-right: 10px;">
+                    <span style="color: #2196f3; font-weight: bold;">days</span>
                 </div>
             </div>
             <div class="modal-footer">

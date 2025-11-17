@@ -1,3 +1,6 @@
+// AMTC Lab Management System - Basic Version
+// Simple localhost inventory management system
+
 // Global variables
 let currentItems = [];
 let archivedItems = [];
@@ -6,6 +9,16 @@ let currentPickupItemId = null;
 
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🏢 AMTC Lab Management System - Basic Version');
+    
+    // Check if XLSX library is available
+    if (typeof XLSX === 'undefined') {
+        console.error('❌ XLSX library failed to load from CDN');
+        showMessage('Excel import/export functionality is not available. Please check your internet connection and refresh the page.', 'error');
+    } else {
+        console.log('✅ XLSX library loaded successfully');
+    }
+    
     loadDataFromStorage();
     updateDashboard();
     updateArchivedDashboard();
@@ -17,6 +30,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update time remaining every minute
     setInterval(updateTimeRemaining, 60000);
 });
+
+
 
 // Tab navigation functionality
 function showTab(tabName) {
@@ -88,13 +103,15 @@ function handleFormSubmit(event) {
         // Reset form
         event.target.reset();
         
-        // Show success message
-        showMessage('Great! Your item has been registered for storage successfully!', 'success');
+        // Show success message with auto-hide
+        showMessage(`✅ Successfully stored ${item.objectStored} (ID: ${item.uniqueId})`, 'success');
         
-        // Switch to dashboard
-        showTab('dashboard');
-        document.querySelector('.nav-btn[onclick="showTab(\'dashboard\')"]').classList.add('active');
-        document.querySelector('.nav-btn[onclick="showTab(\'add-item\')"]').classList.remove('active');
+        // Update dashboard
+        updateDashboard();
+        updateStats();
+        
+        // Send email notification
+        sendEmailNotification(item);
         
         // Reset button
         submitBtn.classList.remove('loading');
@@ -108,16 +125,25 @@ function updateDashboard() {
     const tbody = document.getElementById('inventory-tbody');
     const noItemsDiv = document.getElementById('no-items');
     
-    if (currentItems.length === 0) {
+    if (!tbody) return;
+    
+    // Sort by expiry date (most urgent first)
+    const sortedItems = [...currentItems].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    
+    if (sortedItems.length === 0) {
         tbody.innerHTML = '';
-        noItemsDiv.style.display = 'block';
+        if (noItemsDiv) {
+            noItemsDiv.style.display = 'block';
+        }
         return;
     }
     
-    noItemsDiv.style.display = 'none';
+    if (noItemsDiv) {
+        noItemsDiv.style.display = 'none';
+    }
     
-    tbody.innerHTML = currentItems.map(item => {
-        const timeRemaining = getTimeRemaining(item.expiryDate);
+    tbody.innerHTML = sortedItems.map(item => {
+        const timeRemaining = calculateTimeRemaining(item.expiryDate);
         const statusClass = getStatusClass(timeRemaining);
         
         return `
@@ -139,7 +165,7 @@ function updateDashboard() {
                             ⏰ Add More Time
                         </button>
                         <button class="btn btn-success" onclick="openPickupModal('${item.id}')">
-                            ✅ I Picked This Up
+                            ✅ Mark as Picked Up
                         </button>
                     </div>
                 </td>
@@ -151,18 +177,28 @@ function updateDashboard() {
 // Update archived dashboard
 function updateArchivedDashboard() {
     const tbody = document.getElementById('archived-tbody');
-    const noArchivedDiv = document.getElementById('no-archived');
+    if (!tbody) return;
     
-    if (archivedItems.length === 0) {
-        tbody.innerHTML = '';
-        noArchivedDiv.style.display = 'block';
+    // Sort by pickup date (most recent first)
+    const sortedArchived = [...archivedItems].sort((a, b) => new Date(b.pickupDate) - new Date(a.pickupDate));
+    
+    if (sortedArchived.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">
+                    <div class="empty-state">
+                        <div class="empty-icon">📋</div>
+                        <p>No archived items yet</p>
+                        <p class="empty-subtext">Items that are picked up will appear here</p>
+                    </div>
+                </td>
+            </tr>
+        `;
         return;
     }
     
-    noArchivedDiv.style.display = 'none';
-    
-    tbody.innerHTML = archivedItems.map(item => {
-        const storageDuration = calculateStorageDuration(item.dateAdded, item.pickedUpDate);
+    tbody.innerHTML = sortedArchived.map(item => {
+        const daysStored = Math.floor((new Date(item.pickupDate) - new Date(item.dateAdded)) / (1000 * 60 * 60 * 24));
         
         return `
             <tr>
@@ -172,75 +208,90 @@ function updateArchivedDashboard() {
                 <td>${item.objectStored}</td>
                 <td>${item.uniqueId}</td>
                 <td>${item.location}</td>
-                <td>${storageDuration}</td>
-                <td>${new Date(item.pickedUpDate).toLocaleDateString()}</td>
+                <td>
+                    <span class="status-indicator picked-up">
+                        ✅ Picked up ${formatDate(item.pickupDate)} (${daysStored}d stored)
+                    </span>
+                </td>
             </tr>
         `;
     }).join('');
 }
 
 // Calculate time remaining
-function getTimeRemaining(expiryDate) {
+function calculateTimeRemaining(expiryDate) {
     const now = new Date();
     const expiry = new Date(expiryDate);
-    const diffMs = expiry - now;
+    const diff = expiry - now;
     
-    if (diffMs <= 0) {
-        return {
-            days: 0,
-            hours: 0,
-            display: 'Time Expired',
-            status: 'overdue'
+    if (diff <= 0) {
+        return { isExpired: true, text: 'EXPIRED', totalHours: 0, display: '⚠️ EXPIRED' };
+    }
+    
+    const totalHours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    
+    if (days > 0) {
+        const displayText = `${days}d ${hours}h`;
+        return { 
+            isExpired: false, 
+            text: `${days} day${days !== 1 ? 's' : ''}, ${hours} hour${hours !== 1 ? 's' : ''}`,
+            totalHours,
+            display: displayText
+        };
+    } else {
+        const displayText = `${hours}h`;
+        return { 
+            isExpired: false, 
+            text: `${hours} hour${hours !== 1 ? 's' : ''}`,
+            totalHours,
+            display: displayText
         };
     }
-    
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    let display;
-    let status;
-    
-    if (days > 2) {
-        display = `${days} days left`;
-        status = 'normal';
-    } else if (days > 0) {
-        display = `${days} days ${hours}h left`;
-        status = 'expiring';
-    } else {
-        display = `${hours} hours left`;
-        status = 'expiring';
-    }
-    
-    return { days, hours, display, status };
 }
 
-// Get status class for styling
 function getStatusClass(timeRemaining) {
-    switch (timeRemaining.status) {
-        case 'overdue':
-            return 'status-overdue';
-        case 'expiring':
-            return 'status-expiring';
-        default:
-            return 'status-normal';
+    if (timeRemaining.isExpired) {
+        return 'expired';
+    } else if (timeRemaining.totalHours <= 24) {
+        return 'expiring-soon';
+    } else {
+        return 'normal';
     }
 }
 
 // Update statistics
 function updateStats() {
     const totalItems = currentItems.length;
-    const expiringSoon = currentItems.filter(item => {
-        const timeRemaining = getTimeRemaining(item.expiryDate);
-        return timeRemaining.days <= 2 && timeRemaining.days >= 0;
+    const expiredItems = currentItems.filter(item => {
+        const timeRemaining = calculateTimeRemaining(item.expiryDate);
+        return timeRemaining.isExpired;
     }).length;
-    const overdueItems = currentItems.filter(item => {
-        const timeRemaining = getTimeRemaining(item.expiryDate);
-        return timeRemaining.status === 'overdue';
+    const expiringSoonItems = currentItems.filter(item => {
+        const timeRemaining = calculateTimeRemaining(item.expiryDate);
+        return timeRemaining.totalHours <= 24 && !timeRemaining.isExpired;
     }).length;
     
-    document.getElementById('total-items').textContent = totalItems;
-    document.getElementById('expiring-soon').textContent = expiringSoon;
-    document.getElementById('overdue-items').textContent = overdueItems;
+    const totalEl = document.getElementById('total-items');
+    if (totalEl) totalEl.textContent = totalItems;
+
+    // HTML uses different IDs for these stats - guard and set safely
+    const expiringSoonEl = document.getElementById('expiring-soon');
+    if (expiringSoonEl) expiringSoonEl.textContent = expiringSoonItems;
+
+    const overdueEl = document.getElementById('overdue-items');
+    if (overdueEl) overdueEl.textContent = expiredItems;
+
+    // Storage usage/details (optional elements)
+    const storageUsageEl = document.getElementById('storage-usage');
+    if (storageUsageEl) storageUsageEl.textContent = `${currentItems.length} items`;
+    const storageDetailsEl = document.getElementById('storage-details');
+    if (storageDetailsEl) storageDetailsEl.textContent = `${currentItems.length} items stored`;
+
+    // Archived count (if present anywhere)
+    const archivedCountEl = document.getElementById('archived-count');
+    if (archivedCountEl) archivedCountEl.textContent = archivedItems.length;
 }
 
 // Update time remaining every minute
@@ -249,15 +300,98 @@ function updateTimeRemaining() {
     updateStats();
 }
 
+// Extend item storage period
+function extendItem(itemId) {
+    currentExtendingItemId = itemId;
+    const item = currentItems.find(i => i.id === itemId);
+    if (!item) return;
+    
+    document.getElementById('extend-item-name').textContent = item.objectStored;
+    document.getElementById('extend-modal').style.display = 'block';
+}
+
+// Confirm extension
+function confirmExtension() {
+    const additionalDays = parseInt(document.getElementById('extension-days').value);
+    if (!additionalDays || additionalDays <= 0) {
+        showMessage('Please enter a valid number of days', 'error');
+        return;
+    }
+    
+    const item = currentItems.find(i => i.id === currentExtendingItemId);
+    if (item) {
+        const currentExpiry = new Date(item.expiryDate);
+        const newExpiry = new Date(currentExpiry.getTime() + (additionalDays * 24 * 60 * 60 * 1000));
+        item.expiryDate = newExpiry.toISOString();
+        
+        saveDataToStorage();
+        updateDashboard();
+        updateStats();
+        
+        showMessage(`✅ Extended ${item.objectStored} by ${additionalDays} day(s)`, 'success');
+        
+        // Send extension notification email
+        sendExtensionNotification(item, additionalDays);
+    }
+    
+    closeExtendModal();
+}
+
+// Pickup item
+function pickupItem(itemId) {
+    currentPickupItemId = itemId;
+    const item = currentItems.find(i => i.id === itemId);
+    if (!item) return;
+    
+    document.getElementById('pickup-item-name').textContent = item.objectStored;
+    document.getElementById('pickup-modal').style.display = 'block';
+}
+
+// Confirm pickup
+function confirmPickup() {
+    const itemIndex = currentItems.findIndex(i => i.id === currentPickupItemId);
+    if (itemIndex !== -1) {
+        const item = currentItems[itemIndex];
+        item.pickupDate = new Date().toISOString();
+        
+        // Move to archived items
+        archivedItems.push(item);
+        currentItems.splice(itemIndex, 1);
+        
+        saveDataToStorage();
+        updateDashboard();
+        updateArchivedDashboard();
+        updateStats();
+        
+        showMessage(`✅ ${item.objectStored} marked as picked up`, 'success');
+        
+        // Send pickup confirmation email
+        sendPickupNotification(item);
+    }
+    
+    closePickupModal();
+}
+
+// Close modals
+function closeExtendModal() {
+    document.getElementById('extend-modal').style.display = 'none';
+    document.getElementById('extension-days').value = '';
+    currentExtendingItemId = null;
+}
+
+function closePickupModal() {
+    document.getElementById('pickup-modal').style.display = 'none';
+    currentPickupItemId = null;
+}
+
 // Modal functions for extending time
 function openExtendModal(itemId) {
     const item = currentItems.find(i => i.id === itemId);
     if (!item) return;
-    
+
     currentExtendingItemId = itemId;
     document.getElementById('extend-item-name').textContent = `${item.objectStored} (${item.uniqueId})`;
     document.getElementById('extend-amount').value = '';
-    document.getElementById('extend-unit').value = 'days';
     document.getElementById('extend-modal').style.display = 'block';
 }
 
@@ -268,38 +402,35 @@ function closeExtendModal() {
 
 function confirmExtension() {
     const amount = parseInt(document.getElementById('extend-amount').value);
-    const unit = document.getElementById('extend-unit').value;
-    
+
     if (!amount || amount <= 0) {
         showMessage('Please enter how much more time you need (must be greater than 0).', 'error');
         return;
     }
-    
+
     const item = currentItems.find(i => i.id === currentExtendingItemId);
     if (!item) return;
-    
-    // Calculate additional time in milliseconds
-    const additionalMs = unit === 'days' ? 
-        amount * 24 * 60 * 60 * 1000 : 
-        amount * 60 * 60 * 1000;
-    
+
+    // Calculate additional time in milliseconds (days only)
+    const additionalMs = amount * 24 * 60 * 60 * 1000;
+
     // Extend the expiry date
     const currentExpiry = new Date(item.expiryDate);
     item.expiryDate = new Date(currentExpiry.getTime() + additionalMs).toISOString();
-    
-    // Update original time period for record keeping
-    const originalDays = Math.floor((new Date(item.expiryDate) - new Date(item.dateAdded)) / (1000 * 60 * 60 * 24));
-    item.timePeriod = originalDays;
-    
+
+    // Update time period to reflect the new total (original + extension)
+    item.timePeriod = item.timePeriod + amount;
+
     saveDataToStorage();
     updateDashboard();
     updateStats();
     closeExtendModal();
-    
-    showMessage(`Perfect! Storage time extended by ${amount} ${unit}. Your item now has more time!`, 'success');
-}
 
-// Modal functions for pickup confirmation
+    showMessage(`Perfect! Storage time extended by ${amount} days. Your item now has ${item.timePeriod} total days!`, 'success');
+    
+    // Send extension notification
+    sendExtensionNotification(item, amount);
+}// Modal functions for pickup confirmation
 function openPickupModal(itemId) {
     const item = currentItems.find(i => i.id === itemId);
     if (!item) return;
@@ -319,7 +450,7 @@ function confirmPickup() {
     if (!item) return;
     
     // Add pickup date and move to archived items
-    item.pickedUpDate = new Date().toISOString();
+    item.pickupDate = new Date().toISOString();
     archivedItems.push(item);
     
     // Remove from current items
@@ -327,10 +458,14 @@ function confirmPickup() {
     
     saveDataToStorage();
     updateDashboard();
+    updateArchivedDashboard();
     updateStats();
     closePickupModal();
     
     showMessage('Item successfully marked as picked up and moved to history. Thank you!', 'success');
+    
+    // Send pickup confirmation email
+    sendPickupNotification(item);
 }
 
 // Calculate storage duration
@@ -349,44 +484,181 @@ function calculateStorageDuration(dateAdded, pickedUpDate) {
     }
 }
 
-// Local storage functions
-function saveDataToStorage() {
-    localStorage.setItem('lab-inventory-current', JSON.stringify(currentItems));
-    localStorage.setItem('lab-inventory-archived', JSON.stringify(archivedItems));
+// Archived items management functions
+function restoreToActive(itemId) {
+    const item = archivedItems.find(i => i.id === itemId);
+    if (!item) {
+        showMessage('❌ Item not found. Please refresh the page and try again.', 'error');
+        return;
+    }
+    
+    // Remove pickup date and restore to current items
+    delete item.pickedUpDate;
+    currentItems.push(item);
+    
+    // Remove from archived items
+    archivedItems = archivedItems.filter(i => i.id !== itemId);
+    
+    saveDataToStorage();
+    updateDashboard();
+    updateArchivedDashboard();
+    updateStats();
+    
+    showMessage(`✅ Item "${item.objectStored}" restored to active inventory successfully!`, 'success');
 }
 
+function confirmDeleteArchived(itemId) {
+    const item = archivedItems.find(i => i.id === itemId);
+    if (!item) {
+        showMessage('❌ Item not found. Please refresh the page and try again.', 'error');
+        return;
+    }
+    
+    // Show confirmation dialog
+    const confirmed = confirm(
+        `⚠️ Permanently Delete Item?\n\n` +
+        `Item: ${item.objectStored}\n` +
+        `Tag: ${item.uniqueId}\n` +
+        `Owner: ${item.ownerName}\n\n` +
+        `This action cannot be undone. Are you sure?`
+    );
+    
+    if (confirmed) {
+        // Remove from archived items
+        archivedItems = archivedItems.filter(i => i.id !== itemId);
+        
+        saveDataToStorage();
+        updateArchivedDashboard();
+        
+        showMessage(`🗑️ Item "${item.objectStored}" permanently deleted from records.`, 'success');
+    }
+}
+
+// Load data from localStorage
 function loadDataFromStorage() {
-    const currentData = localStorage.getItem('lab-inventory-current');
-    const archivedData = localStorage.getItem('lab-inventory-archived');
-    
-    if (currentData) {
-        currentItems = JSON.parse(currentData);
-    }
-    
-    if (archivedData) {
-        archivedItems = JSON.parse(archivedData);
+    try {
+        const stored = localStorage.getItem('amtc-inventory-data');
+        if (stored) {
+            const data = JSON.parse(stored);
+            currentItems = data.currentItems || [];
+            archivedItems = data.archivedItems || [];
+        }
+    } catch (error) {
+        console.error('Error loading data:', error);
+        currentItems = [];
+        archivedItems = [];
     }
 }
 
-// Show success/error messages
-function showMessage(message, type) {
+// Save data to localStorage
+function saveDataToStorage() {
+    try {
+        const data = {
+            currentItems,
+            archivedItems,
+            lastUpdated: new Date().toISOString()
+        };
+        localStorage.setItem('amtc-inventory-data', JSON.stringify(data));
+    } catch (error) {
+        console.error('Error saving data:', error);
+        showMessage('Error saving data. Please try again.', 'error');
+    }
+}
+
+// Update storage usage indicator
+function updateStorageUsage() {
+    try {
+        const currentData = localStorage.getItem('lab-inventory-current') || '[]';
+        const archivedData = localStorage.getItem('lab-inventory-archived') || '[]';
+        
+        // Calculate size in bytes
+        const totalBytes = (currentData.length + archivedData.length);
+        const totalMB = totalBytes / (1024 * 1024);
+        const maxStorageMB = 10; // 10MB typical browser limit
+        
+        // Calculate percentage used
+        const percentageUsed = Math.min((totalMB / maxStorageMB) * 100, 100);
+        
+        // Update display
+        const storageUsageElement = document.getElementById('storage-usage');
+        const storageFillElement = document.getElementById('storage-fill');
+        const storageDetailsElement = document.getElementById('storage-details');
+        
+        if (storageUsageElement && storageFillElement && storageDetailsElement) {
+            // Format size display
+            let displaySize = totalMB < 0.01 ? '<0.01 MB' : `${totalMB.toFixed(2)} MB`;
+            
+            storageUsageElement.textContent = displaySize;
+            storageFillElement.style.width = `${percentageUsed}%`;
+            
+            // Get the storage usage card element
+            const storageCard = document.querySelector('.storage-usage');
+            
+            // Update bar color based on usage
+            storageFillElement.className = 'storage-fill';
+            
+            // Remove any existing critical class
+            if (storageCard) {
+                storageCard.classList.remove('critical');
+            }
+            
+            if (percentageUsed > 85) {
+                storageFillElement.classList.add('high');
+                // Add critical warning styling to the entire card
+                if (storageCard) {
+                    storageCard.classList.add('critical');
+                }
+            } else if (percentageUsed > 80) {
+                storageFillElement.classList.add('high');
+            } else if (percentageUsed > 50) {
+                storageFillElement.classList.add('medium');
+            }
+            
+            // Update details with warning message if critical
+            const totalItems = JSON.parse(currentData).length + JSON.parse(archivedData).length;
+            let detailsText = `${totalItems} items stored (${percentageUsed.toFixed(1)}% of limit)`;
+            
+            if (percentageUsed > 85) {
+                detailsText += ' ⚠️ CRITICAL - Consider exporting data!';
+            }
+            
+            storageDetailsElement.textContent = detailsText;
+        }
+    } catch (error) {
+        console.error('Error updating storage usage:', error);
+    }
+}
+
+// Show message with auto-hide
+function showMessage(message, type = 'info') {
     // Remove existing messages
     const existingMessages = document.querySelectorAll('.message');
     existingMessages.forEach(msg => msg.remove());
     
-    // Create new message
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message message-${type}`;
-    messageDiv.textContent = message;
+    const messageEl = document.createElement('div');
+    messageEl.className = `message ${type}`;
+    messageEl.textContent = message;
     
-    // Insert at the top of the container
-    const container = document.querySelector('.container');
-    container.insertBefore(messageDiv, container.firstChild);
+    document.body.appendChild(messageEl);
     
-    // Auto-remove after 5 seconds
+    // Auto-hide after 5 seconds
     setTimeout(() => {
-        messageDiv.remove();
+        if (messageEl.parentNode) {
+            messageEl.remove();
+        }
     }, 5000);
+}
+
+// Format date for display
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 // Excel export functionality
@@ -479,9 +751,26 @@ function importFromExcel(event) {
     const file = event.target.files[0];
     if (!file) return;
     
+    // Check if XLSX library is loaded
+    if (typeof XLSX === 'undefined') {
+        showMessage('Excel processing library not loaded. Please refresh the page and try again.', 'error');
+        console.error('XLSX library is not available');
+        return;
+    }
+    
+    // Check file type
+    const fileExtension = file.name.toLowerCase().split('.').pop();
+    if (!['xlsx', 'xls'].includes(fileExtension)) {
+        showMessage('Please upload only Excel files (.xlsx or .xls)', 'error');
+        return;
+    }
+    
+    console.log(`Processing file: ${file.name} (${file.size} bytes)`);
+    
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
+            console.log('File read successfully, parsing Excel data...');
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
             
@@ -541,7 +830,18 @@ function importFromExcel(event) {
             showMessage(message, importedCount > 0 ? 'success' : 'error');
         } catch (error) {
             console.error('Import error:', error);
-            showMessage('Sorry, there was a problem reading your file. Please check the file format and try again.', 'error');
+            let errorMessage = 'Sorry, there was a problem reading your file. ';
+            
+            if (error.message && error.message.includes('Unsupported file')) {
+                errorMessage += 'The file format is not supported. Please ensure you\'re uploading a valid Excel file (.xlsx or .xls).';
+            } else if (error.message && error.message.includes('Invalid')) {
+                errorMessage += 'The file appears to be corrupted or invalid. Please try exporting your data to a new Excel file.';
+            } else {
+                errorMessage += 'Please check the file format and try again. Make sure it\'s a valid Excel file with data.';
+            }
+            
+            showMessage(errorMessage, 'error');
+            console.error('Detailed error:', error.message, error.stack);
         }
     };
     
@@ -571,3 +871,83 @@ document.addEventListener('keydown', function(event) {
         closePickupModal();
     }
 });
+
+// Email notification functions
+async function sendEmailNotification(item) {
+    try {
+        const response = await fetch('http://localhost:8000/send-notification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'storage',
+                item: item
+            })
+        });
+        
+        if (response.ok) {
+            console.log('📧 Storage notification sent successfully');
+        } else {
+            console.log('📧 Email notification failed, but item was stored successfully');
+        }
+    } catch (error) {
+        console.log('📧 Email service unavailable, but item was stored successfully');
+    }
+}
+
+async function sendExtensionNotification(item, additionalDays) {
+    try {
+        const response = await fetch('http://localhost:8000/send-notification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'extension',
+                item: item,
+                additionalDays: additionalDays
+            })
+        });
+        
+        if (response.ok) {
+            console.log('📧 Extension notification sent successfully');
+        }
+    } catch (error) {
+        console.log('📧 Email service unavailable for extension notification');
+    }
+}
+
+async function sendPickupNotification(item) {
+    try {
+        const response = await fetch('http://localhost:8000/send-notification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'pickup',
+                item: item
+            })
+        });
+        
+        if (response.ok) {
+            console.log('� Pickup notification sent successfully');
+        }
+    } catch (error) {
+        console.log('📧 Email service unavailable for pickup notification');
+    }
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const extendModal = document.getElementById('extend-modal');
+    const pickupModal = document.getElementById('pickup-modal');
+    
+    if (event.target === extendModal) {
+        closeExtendModal();
+    }
+    if (event.target === pickupModal) {
+        closePickupModal();
+    }
+};
