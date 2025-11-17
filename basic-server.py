@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AMTC Lab Management System - Basic Server
-Simplified localhost server with email notifications
+Simplified localhost server with email notifications and SQLite database
 """
 
 import http.server
@@ -15,6 +15,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 import threading
+import database  # Import our database module
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,17 +25,127 @@ class BasicLabServer(http.server.SimpleHTTPRequestHandler):
     """Basic server for AMTC Lab Management System"""
     
     def do_POST(self):
-        """Handle POST requests for email notifications"""
+        """Handle POST requests for email notifications and database operations"""
         if self.path == '/send-notification':
             self.handle_email_notification()
+        elif self.path == '/api/items':
+            self.handle_add_item()
+        elif self.path == '/api/items/update':
+            self.handle_update_item()
+        elif self.path == '/api/items/delete':
+            self.handle_delete_item()
+        elif self.path == '/api/items/archive':
+            self.handle_archive_item()
+        elif self.path == '/api/items/import':
+            self.handle_import_items()
         else:
             self.send_response(404)
             self.end_headers()
     
     def do_GET(self):
-        """Handle GET requests - serve static files"""
-        # Serve static files from the current directory
-        return super().do_GET()
+        """Handle GET requests - serve static files and API calls"""
+        if self.path == '/api/items':
+            self.handle_get_items()
+        elif self.path == '/api/archived':
+            self.handle_get_archived()
+        else:
+            # Serve static files from the current directory
+            return super().do_GET()
+    
+    # ==================== DATABASE API HANDLERS ====================
+    
+    def handle_get_items(self):
+        """Get all inventory items from database"""
+        try:
+            result = database.get_all_items()
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error getting items: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    def handle_get_archived(self):
+        """Get all archived items from database"""
+        try:
+            result = database.get_all_archived()
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error getting archived items: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    def handle_add_item(self):
+        """Add a new item to database"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            item = json.loads(post_data.decode('utf-8'))
+            
+            result = database.add_item(item)
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error adding item: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    def handle_update_item(self):
+        """Update an existing item in database"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            item_id = data.get('id')
+            updates = data.get('updates')
+            
+            result = database.update_item(item_id, updates)
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error updating item: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    def handle_delete_item(self):
+        """Delete an item from database"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            item_id = data.get('id')
+            result = database.delete_item(item_id)
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error deleting item: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    def handle_archive_item(self):
+        """Archive an item (move from inventory to archived)"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            item = data.get('item')
+            pickup_date = data.get('pickupDate')
+            
+            result = database.archive_item(item, pickup_date)
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error archiving item: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    def handle_import_items(self):
+        """Import multiple items at once"""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            items = data.get('items', [])
+            result = database.import_items(items)
+            self.send_json_response(result)
+        except Exception as e:
+            logger.error(f"Error importing items: {e}")
+            self.send_json_response({'success': False, 'error': str(e)}, 500)
+    
+    # ==================== EMAIL NOTIFICATION HANDLER ====================
     
     def handle_email_notification(self):
         """Handle email notification requests"""

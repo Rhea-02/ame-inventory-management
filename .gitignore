@@ -52,6 +52,12 @@ __pycache__/
 # Email configuration (contains sensitive data)
 email_config.json
 
+# SQLite database files (contains user data)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
 # Local server files
 *.log
 

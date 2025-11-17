@@ -59,7 +59,7 @@ function showTab(tabName) {
 }
 
 // Handle form submission
-function handleFormSubmit(event) {
+async function handleFormSubmit(event) {
     event.preventDefault();
     
     // Add loading state
@@ -69,11 +69,10 @@ function handleFormSubmit(event) {
     submitBtn.innerHTML = '🔄 Storing Item...';
     submitBtn.disabled = true;
     
-    // Simulate processing time for better UX
-    setTimeout(() => {
+    try {
         const formData = new FormData(event.target);
         const item = {
-            id: Date.now().toString(), // Simple ID generation
+            id: Date.now().toString(),
             ownerName: formData.get('ownerName'),
             emailId: formData.get('emailId'),
             ssoId: formData.get('ssoId'),
@@ -88,36 +87,41 @@ function handleFormSubmit(event) {
         // Check if unique ID already exists
         if (currentItems.find(existingItem => existingItem.uniqueId === item.uniqueId)) {
             showMessage('Oops! An item with this Tag/ID already exists. Please use a different tag number.', 'error');
-            
-            // Reset button
             submitBtn.classList.remove('loading');
             submitBtn.innerHTML = originalText;
             submitBtn.disabled = false;
             return;
         }
         
-        // Add item to current items
-        currentItems.push(item);
-        saveDataToStorage();
+        // Save to database
+        const success = await saveItemToDatabase(item);
         
-        // Reset form
-        event.target.reset();
-        
-        // Show success message with auto-hide
-        showMessage(`✅ Successfully stored ${item.objectStored} (ID: ${item.uniqueId})`, 'success');
-        
-        // Update dashboard
-        updateDashboard();
-        updateStats();
-        
-        // Send email notification
-        sendEmailNotification(item);
-        
+        if (success) {
+            // Add to local array
+            currentItems.push(item);
+            
+            // Reset form
+            event.target.reset();
+            
+            // Show success message
+            showMessage(`✅ Successfully stored ${item.objectStored} (ID: ${item.uniqueId}) in database`, 'success');
+            
+            // Update dashboard
+            updateDashboard();
+            updateStats();
+            
+            // Send email notification
+            sendEmailNotification(item);
+        }
+    } catch (error) {
+        console.error('Error submitting form:', error);
+        showMessage('❌ Error storing item. Please try again.', 'error');
+    } finally {
         // Reset button
         submitBtn.classList.remove('loading');
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
-    }, 800); // Small delay for better UX
+    }
 }
 
 // Update dashboard display
@@ -311,7 +315,7 @@ function extendItem(itemId) {
 }
 
 // Confirm extension
-function confirmExtension() {
+async function confirmExtension() {
     const additionalDays = parseInt(document.getElementById('extension-days').value);
     if (!additionalDays || additionalDays <= 0) {
         showMessage('Please enter a valid number of days', 'error');
@@ -322,16 +326,24 @@ function confirmExtension() {
     if (item) {
         const currentExpiry = new Date(item.expiryDate);
         const newExpiry = new Date(currentExpiry.getTime() + (additionalDays * 24 * 60 * 60 * 1000));
-        item.expiryDate = newExpiry.toISOString();
+        const newExpiryISO = newExpiry.toISOString();
         
-        saveDataToStorage();
-        updateDashboard();
-        updateStats();
+        // Update in database
+        const success = await updateItemInDatabase(item.id, { expiryDate: newExpiryISO });
         
-        showMessage(`✅ Extended ${item.objectStored} by ${additionalDays} day(s)`, 'success');
-        
-        // Send extension notification email
-        sendExtensionNotification(item, additionalDays);
+        if (success) {
+            item.expiryDate = newExpiryISO;
+            
+            updateDashboard();
+            updateStats();
+            
+            showMessage(`✅ Extended ${item.objectStored} by ${additionalDays} day(s) in database`, 'success');
+            
+            // Send extension notification email
+            sendExtensionNotification(item, additionalDays);
+        } else {
+            showMessage('❌ Error extending item in database', 'error');
+        }
     }
     
     closeExtendModal();
@@ -348,25 +360,31 @@ function pickupItem(itemId) {
 }
 
 // Confirm pickup
-function confirmPickup() {
+async function confirmPickup() {
     const itemIndex = currentItems.findIndex(i => i.id === currentPickupItemId);
     if (itemIndex !== -1) {
         const item = currentItems[itemIndex];
         item.pickupDate = new Date().toISOString();
         
-        // Move to archived items
-        archivedItems.push(item);
-        currentItems.splice(itemIndex, 1);
+        // Archive in database
+        const success = await archiveItemInDatabase(item, item.pickupDate);
         
-        saveDataToStorage();
-        updateDashboard();
-        updateArchivedDashboard();
-        updateStats();
-        
-        showMessage(`✅ ${item.objectStored} marked as picked up`, 'success');
-        
-        // Send pickup confirmation email
-        sendPickupNotification(item);
+        if (success) {
+            // Move to archived items locally
+            archivedItems.push(item);
+            currentItems.splice(itemIndex, 1);
+            
+            updateDashboard();
+            updateArchivedDashboard();
+            updateStats();
+            
+            showMessage(`✅ ${item.objectStored} marked as picked up and archived in database`, 'success');
+            
+            // Send pickup confirmation email
+            sendPickupNotification(item);
+        } else {
+            showMessage('❌ Error archiving item in database', 'error');
+        }
     }
     
     closePickupModal();
@@ -535,7 +553,50 @@ function confirmDeleteArchived(itemId) {
 }
 
 // Load data from localStorage
-function loadDataFromStorage() {
+// ==================== DATA STORAGE FUNCTIONS ====================
+
+// Load data from SQLite database
+async function loadDataFromStorage() {
+    try {
+        // Load current items
+        const itemsResponse = await fetch('/api/items');
+        const itemsData = await itemsResponse.json();
+        
+        if (itemsData.success) {
+            currentItems = itemsData.items || [];
+            console.log(`✅ Loaded ${currentItems.length} items from database`);
+        } else {
+            console.error('❌ Error loading items:', itemsData.message);
+            currentItems = [];
+        }
+        
+        // Load archived items
+        const archivedResponse = await fetch('/api/archived');
+        const archivedData = await archivedResponse.json();
+        
+        if (archivedData.success) {
+            archivedItems = archivedData.items || [];
+            console.log(`✅ Loaded ${archivedItems.length} archived items from database`);
+        } else {
+            console.error('❌ Error loading archived items:', archivedData.message);
+            archivedItems = [];
+        }
+        
+        // Update UI
+        updateDashboard();
+        updateArchivedDashboard();
+        updateStats();
+        
+    } catch (error) {
+        console.error('❌ Error loading data from database:', error);
+        showMessage('⚠️ Could not load data from database. Using local cache.', 'warning');
+        // Fallback to localStorage
+        loadFromLocalStorage();
+    }
+}
+
+// Fallback to localStorage if database is unavailable
+function loadFromLocalStorage() {
     try {
         const stored = localStorage.getItem('amtc-inventory-data');
         if (stored) {
@@ -544,14 +605,93 @@ function loadDataFromStorage() {
             archivedItems = data.archivedItems || [];
         }
     } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('Error loading from localStorage:', error);
         currentItems = [];
         archivedItems = [];
     }
 }
 
-// Save data to localStorage
-function saveDataToStorage() {
+// Save item to database
+async function saveItemToDatabase(item) {
+    try {
+        const response = await fetch('/api/items', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(item)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('✅ Item saved to database');
+            // Also save to localStorage as backup
+            saveToLocalStorageBackup();
+            return true;
+        } else {
+            console.error('❌ Error saving to database:', result.message);
+            showMessage(result.message, 'error');
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Database save error:', error);
+        showMessage('⚠️ Could not save to database. Saved locally only.', 'warning');
+        saveToLocalStorageBackup();
+        return false;
+    }
+}
+
+// Update item in database
+async function updateItemInDatabase(itemId, updates) {
+    try {
+        const response = await fetch('/api/items/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: itemId, updates: updates })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('✅ Item updated in database');
+            saveToLocalStorageBackup();
+            return true;
+        } else {
+            console.error('❌ Error updating database:', result.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Database update error:', error);
+        return false;
+    }
+}
+
+// Archive item in database
+async function archiveItemInDatabase(item, pickupDate) {
+    try {
+        const response = await fetch('/api/items/archive', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ item: item, pickupDate: pickupDate })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('✅ Item archived in database');
+            saveToLocalStorageBackup();
+            return true;
+        } else {
+            console.error('❌ Error archiving in database:', result.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('❌ Database archive error:', error);
+        return false;
+    }
+}
+
+// Backup to localStorage
+function saveToLocalStorageBackup() {
     try {
         const data = {
             currentItems,
@@ -560,9 +700,13 @@ function saveDataToStorage() {
         };
         localStorage.setItem('amtc-inventory-data', JSON.stringify(data));
     } catch (error) {
-        console.error('Error saving data:', error);
-        showMessage('Error saving data. Please try again.', 'error');
+        console.error('Error saving localStorage backup:', error);
     }
+}
+
+// Legacy function for compatibility
+function saveDataToStorage() {
+    saveToLocalStorageBackup();
 }
 
 // Update storage usage indicator
